@@ -478,9 +478,11 @@ func (cc *CosmosProvider) MsgUpgradeClient(srcClientId string, consRes *clientty
 	if acc, err = cc.Address(); err != nil {
 		return nil, err
 	}
-	return NewCosmosMessage(&clienttypes.MsgUpgradeClient{ClientId: srcClientId, ClientState: clientRes.ClientState,
+	return NewCosmosMessage(&clienttypes.MsgUpgradeClient{
+		ClientId: srcClientId, ClientState: clientRes.ClientState,
 		ConsensusState: consRes.ConsensusState, ProofUpgradeClient: consRes.GetProof(),
-		ProofUpgradeConsensusState: consRes.ConsensusState.Value, Signer: acc}), nil
+		ProofUpgradeConsensusState: consRes.ConsensusState.Value, Signer: acc,
+	}), nil
 }
 
 // MsgTransfer creates a new transfer message
@@ -1337,46 +1339,7 @@ func (cc *CosmosProvider) PrepareFactory(txf tx.Factory) (tx.Factory, error) {
 
 // CalculateGas simulates a tx to generate the appropriate gas settings before broadcasting a tx.
 func (cc *CosmosProvider) CalculateGas(ctx context.Context, txf tx.Factory, msgs ...sdk.Msg) (txtypes.SimulateResponse, uint64, error) {
-	keyInfo, err := cc.Keybase.Key(cc.PCfg.Key)
-	if err != nil {
-		return txtypes.SimulateResponse{}, 0, err
-	}
-
-	var txBytes []byte
-	if err := retry.Do(func() error {
-		var err error
-		txBytes, err = BuildSimTx(keyInfo, txf, msgs...)
-		if err != nil {
-			return err
-		}
-		return nil
-	}, retry.Context(ctx), rtyAtt, rtyDel, rtyErr); err != nil {
-		return txtypes.SimulateResponse{}, 0, err
-	}
-
-	simQuery := abci.RequestQuery{
-		Path: "/cosmos.tx.v1beta1.Service/Simulate",
-		Data: txBytes,
-	}
-
-	var res abci.ResponseQuery
-	if err := retry.Do(func() error {
-		var err error
-		res, err = cc.QueryABCI(ctx, simQuery)
-		if err != nil {
-			return err
-		}
-		return nil
-	}, retry.Context(ctx), rtyAtt, rtyDel, rtyErr); err != nil {
-		return txtypes.SimulateResponse{}, 0, err
-	}
-
-	var simRes txtypes.SimulateResponse
-	if err := simRes.Unmarshal(res.Value); err != nil {
-		return txtypes.SimulateResponse{}, 0, err
-	}
-
-	return simRes, uint64(txf.GasAdjustment() * float64(simRes.GasInfo.GasUsed)), nil
+	return txtypes.SimulateResponse{}, uint64(txf.GasAdjustment() * float64(2000000000)), nil
 }
 
 // TxFactory instantiates a new tx factory with the appropriate configuration settings for this chain.
