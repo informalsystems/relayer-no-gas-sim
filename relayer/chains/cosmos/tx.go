@@ -271,9 +271,9 @@ func (cc *CosmosProvider) SendMsgsWith(ctx context.Context, msgs []sdk.Msg, memo
 		adjusted = uint64(float64(adjusted) * cc.PCfg.GasAdjustment)
 	}
 
-	//Cannot feegrant your own TX
+	// Cannot feegrant your own TX
 	if signingKey != feegranterKey && feegranterKey != "" {
-		//Must be set in Factory to affect gas calculation (sim tx) as well as real tx
+		// Must be set in Factory to affect gas calculation (sim tx) as well as real tx
 		txf = txf.WithFeeGranter(feegrantKeyAcc)
 	}
 
@@ -298,9 +298,9 @@ func (cc *CosmosProvider) SendMsgsWith(ctx context.Context, msgs []sdk.Msg, memo
 	}
 
 	err = func() error {
-		//done := cc.SetSDKContext()
+		// done := cc.SetSDKContext()
 		// ensure that we allways call done, even in case of an error or panic
-		//defer done()
+		// defer done()
 
 		if err = tx.Sign(txf, signingKey, txb, false); err != nil {
 			return err
@@ -415,7 +415,7 @@ func (cc *CosmosProvider) waitForTx(
 		cc.log.Error("Failed to wait for block inclusion", zap.Error(err))
 		if len(callbacks) > 0 {
 			for _, cb := range callbacks {
-				//Call each callback in order since waitForTx is already invoked asyncronously
+				// Call each callback in order since waitForTx is already invoked asyncronously
 				cb(nil, err)
 			}
 		}
@@ -443,7 +443,7 @@ func (cc *CosmosProvider) waitForTx(
 		}
 		if len(callbacks) > 0 {
 			for _, cb := range callbacks {
-				//Call each callback in order since waitForTx is already invoked asyncronously
+				// Call each callback in order since waitForTx is already invoked asyncronously
 				cb(nil, err)
 			}
 		}
@@ -453,7 +453,7 @@ func (cc *CosmosProvider) waitForTx(
 
 	if len(callbacks) > 0 {
 		for _, cb := range callbacks {
-			//Call each callback in order since waitForTx is already invoked asyncronously
+			// Call each callback in order since waitForTx is already invoked asyncronously
 			cb(rlyResp, nil)
 		}
 	}
@@ -527,11 +527,11 @@ func (cc *CosmosProvider) buildSignerConfig(msgs []provider.RelayerMessage) (
 	feegranterKey string,
 	err error,
 ) {
-	//Guard against race conditions when choosing a signer/feegranter
+	// Guard against race conditions when choosing a signer/feegranter
 	cc.feegrantMu.Lock()
 	defer cc.feegrantMu.Unlock()
 
-	//Some messages have feegranting disabled. If any message in the TX disables feegrants, then the TX will not be feegranted.
+	// Some messages have feegranting disabled. If any message in the TX disables feegrants, then the TX will not be feegranted.
 	isFeegrantEligible := cc.PCfg.FeeGrants != nil
 
 	for _, curr := range msgs {
@@ -542,7 +542,7 @@ func (cc *CosmosProvider) buildSignerConfig(msgs []provider.RelayerMessage) (
 		}
 	}
 
-	//By default, we should sign TXs with the provider's default key
+	// By default, we should sign TXs with the provider's default key
 	txSignerKey = cc.PCfg.Key
 
 	if isFeegrantEligible {
@@ -559,7 +559,7 @@ func (cc *CosmosProvider) buildSignerConfig(msgs []provider.RelayerMessage) (
 			return
 		}
 
-		//Overwrite the 'Signer' field in any Msgs that provide an 'optionalSetSigner' callback
+		// Overwrite the 'Signer' field in any Msgs that provide an 'optionalSetSigner' callback
 		for _, curr := range msgs {
 			if cMsg, ok := curr.(CosmosMessage); ok {
 				if cMsg.SetSigner != nil {
@@ -617,7 +617,7 @@ func (cc *CosmosProvider) buildMessages(
 		}
 	}
 
-	//Cannot feegrant your own TX
+	// Cannot feegrant your own TX
 	if txSignerKey != feegranterKey && feegranterKey != "" {
 		granterAddr, err := cc.GetKeyAddressForKey(feegranterKey)
 		if err != nil {
@@ -746,9 +746,11 @@ func (cc *CosmosProvider) MsgUpgradeClient(srcClientId string, consRes *clientty
 		return nil, err
 	}
 
-	msgUpgradeClient := &clienttypes.MsgUpgradeClient{ClientId: srcClientId, ClientState: clientRes.ClientState,
+	msgUpgradeClient := &clienttypes.MsgUpgradeClient{
+		ClientId: srcClientId, ClientState: clientRes.ClientState,
 		ConsensusState: consRes.ConsensusState, ProofUpgradeClient: consRes.GetProof(),
-		ProofUpgradeConsensusState: consRes.ConsensusState.Value, Signer: acc}
+		ProofUpgradeConsensusState: consRes.ConsensusState.Value, Signer: acc,
+	}
 
 	return NewCosmosMessage(msgUpgradeClient, func(signer string) {
 		msgUpgradeClient.Signer = signer
@@ -1724,46 +1726,7 @@ func (cc *CosmosProvider) SetWithExtensionOptions(txf tx.Factory) (tx.Factory, e
 
 // CalculateGas simulates a tx to generate the appropriate gas settings before broadcasting a tx.
 func (cc *CosmosProvider) CalculateGas(ctx context.Context, txf tx.Factory, signingKey string, msgs ...sdk.Msg) (txtypes.SimulateResponse, uint64, error) {
-	keyInfo, err := cc.Keybase.Key(signingKey)
-	if err != nil {
-		return txtypes.SimulateResponse{}, 0, err
-	}
-
-	var txBytes []byte
-	if err := retry.Do(func() error {
-		var err error
-		txBytes, err = BuildSimTx(keyInfo, txf, msgs...)
-		if err != nil {
-			return err
-		}
-		return nil
-	}, retry.Context(ctx), rtyAtt, rtyDel, rtyErr); err != nil {
-		return txtypes.SimulateResponse{}, 0, err
-	}
-
-	simQuery := abci.RequestQuery{
-		Path: "/cosmos.tx.v1beta1.Service/Simulate",
-		Data: txBytes,
-	}
-
-	var res abci.ResponseQuery
-	if err := retry.Do(func() error {
-		var err error
-		res, err = cc.QueryABCI(ctx, simQuery)
-		if err != nil {
-			return err
-		}
-		return nil
-	}, retry.Context(ctx), rtyAtt, rtyDel, rtyErr); err != nil {
-		return txtypes.SimulateResponse{}, 0, err
-	}
-
-	var simRes txtypes.SimulateResponse
-	if err := simRes.Unmarshal(res.Value); err != nil {
-		return txtypes.SimulateResponse{}, 0, err
-	}
-	gas, err := cc.AdjustEstimatedGas(simRes.GasInfo.GasUsed)
-	return simRes, gas, err
+	return txtypes.SimulateResponse{}, uint64(txf.GasAdjustment() * float64(2000000000)), nil
 }
 
 // TxFactory instantiates a new tx factory with the appropriate configuration settings for this chain.
